@@ -319,6 +319,17 @@ function calcNetCompensation(income) {
   return { cash: 0, retirement: 0, total: 0 };
 }
 
+function calcCompForType(income, employmentType, annualGross = income.annualGross) {
+  return calcNetCompensation({ ...income, employmentType, annualGross });
+}
+
+function findEquivalentSalary(income, targetTotal, employmentType) {
+  for (let salary = 30000; salary <= 600000; salary += 1000) {
+    if (calcCompForType(income, employmentType, salary).total >= targetTotal) return salary;
+  }
+  return null;
+}
+
 function estimateAssetsAtRetire(profile, assets, scenario, assumptions) {
   const years = Math.max(0, n(scenario.retireAge) - n(profile.currentAge));
   const r = n(assumptions.returnRatePct) / 100;
@@ -763,6 +774,95 @@ function Projection({ state, narrow }) {
   );
 }
 
+function JobCompare({ state, update, narrow }) {
+  const { income, scenarios } = state;
+  const setIncome = (key, value) => update("income", key, value);
+  const types = [
+    { id: "W2", label: "Current W-2", note: "FICA, estimated tax, 401k, match, HSA." },
+    { id: "WB_US", label: "WB / Intl Org US", note: "Models WB tax allowance and reduced SE tax burden." },
+    { id: "WB_INTL", label: "WB / Intl Org Abroad", note: "No US SE tax in this simplified model." },
+    { id: "SE", label: "Self-Employed", note: "Uses SE tax rate and estimated tax." },
+  ];
+  const baseline = calcCompForType(income, "W2", income.annualGross);
+  const wbUsEquivalent = findEquivalentSalary(income, baseline.total, "WB_US");
+  const wbIntlEquivalent = findEquivalentSalary(income, baseline.total, "WB_INTL");
+
+  return (
+    <>
+      <Section title="Job Comparison Setup">
+        <Grid columns={3} narrow={narrow}>
+          <Field label="Current / Offer Salary" value={income.annualGross} onChange={(v) => setIncome("annualGross", v)} />
+          <Field label="Estimated Tax" value={income.estimatedTax} onChange={(v) => setIncome("estimatedTax", v)} />
+          <Field label="Health Premium" value={income.healthPremium} onChange={(v) => setIncome("healthPremium", v)} />
+          <Field label="401k Contribution" value={income.k401Annual} onChange={(v) => setIncome("k401Annual", v)} />
+          <Field label="Employer Match %" value={income.employerMatchPct} onChange={(v) => setIncome("employerMatchPct", v)} />
+          <Field label="HSA Total" value={income.hsaAnnual} onChange={(v) => setIncome("hsaAnnual", v)} />
+          <Field label="WB Years of Service" value={income.wbYearsService} onChange={(v) => setIncome("wbYearsService", v)} />
+          <Field label="WB US SE Burden %" value={income.wbSEtaxBurdenPct} onChange={(v) => setIncome("wbSEtaxBurdenPct", v)} />
+          <Field label="WB Employee Pension %" value={income.wbPensionEmpPct} onChange={(v) => setIncome("wbPensionEmpPct", v)} />
+          <Field label="WB Employer Pension %" value={income.wbPensionWBPct} onChange={(v) => setIncome("wbPensionWBPct", v)} />
+          <Field label="WB Tax Allowance" value={income.wbTaxAllowance} type="checkbox" onChange={(v) => setIncome("wbTaxAllowance", v)} />
+          <Field label="Self-Employment Tax %" value={income.seSelfTaxPct} onChange={(v) => setIncome("seSelfTaxPct", v)} />
+        </Grid>
+      </Section>
+      <Section title="Annual Compensation Comparison" right={<span style={small}>Same gross salary unless equivalent salary is shown.</span>}>
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 760 }}>
+            <thead>
+              <tr>{["Job Type", "Cash Take-Home", "Retirement Value", "Total Annual Value", "Gap vs W-2", "Planning Note"].map((h) => <th key={h} style={{ textAlign: "left", padding: 10, borderBottom: `1px solid ${COLORS.border}`, color: COLORS.muted }}>{h}</th>)}</tr>
+            </thead>
+            <tbody>
+              {types.map((type) => {
+                const comp = calcCompForType(income, type.id);
+                const gap = comp.total - baseline.total;
+                return (
+                  <tr key={type.id}>
+                    <td style={{ padding: 10, borderBottom: `1px solid ${COLORS.border}`, fontWeight: 800 }}>{type.label}</td>
+                    <td style={{ padding: 10, borderBottom: `1px solid ${COLORS.border}`, fontFamily: MONEY_FONT }}>{money(comp.cash)}</td>
+                    <td style={{ padding: 10, borderBottom: `1px solid ${COLORS.border}`, fontFamily: MONEY_FONT }}>{money(comp.retirement)}</td>
+                    <td style={{ padding: 10, borderBottom: `1px solid ${COLORS.border}`, fontFamily: MONEY_FONT }}>{money(comp.total)}</td>
+                    <td style={{ padding: 10, borderBottom: `1px solid ${COLORS.border}`, color: gap >= 0 ? COLORS.bucketC : COLORS.warn, fontWeight: 800 }}>{gap >= 0 ? "+" : ""}{money(gap)}</td>
+                    <td style={{ padding: 10, borderBottom: `1px solid ${COLORS.border}`, color: COLORS.muted }}>{type.note}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </Section>
+      <Grid columns={3} narrow={narrow}>
+        <StatCard label="W-2 Total Value" value={money(baseline.total)} />
+        <StatCard label="WB US Salary to Match" value={wbUsEquivalent ? money(wbUsEquivalent) : ">$600K"} color={COLORS.bucketB} />
+        <StatCard label="WB Abroad Salary to Match" value={wbIntlEquivalent ? money(wbIntlEquivalent) : ">$600K"} color={COLORS.bucketC} />
+      </Grid>
+      <Section title="Rule of 60 by Scenario">
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 620 }}>
+            <thead>
+              <tr>{["Scenario", "Retire Age", "WB Service Years", "Score", "Pension Result"].map((h) => <th key={h} style={{ textAlign: "left", padding: 10, borderBottom: `1px solid ${COLORS.border}`, color: COLORS.muted }}>{h}</th>)}</tr>
+            </thead>
+            <tbody>
+              {Object.entries(scenarios).map(([id, s]) => {
+                const score = n(s.retireAge) + n(income.wbYearsService);
+                const met = score >= 60;
+                return (
+                  <tr key={id}>
+                    <td style={{ padding: 10, borderBottom: `1px solid ${COLORS.border}`, color: s.color, fontWeight: 800 }}>{id}. {s.name}</td>
+                    <td style={{ padding: 10, borderBottom: `1px solid ${COLORS.border}` }}>{s.retireAge}</td>
+                    <td style={{ padding: 10, borderBottom: `1px solid ${COLORS.border}` }}>{income.wbYearsService}</td>
+                    <td style={{ padding: 10, borderBottom: `1px solid ${COLORS.border}`, fontWeight: 800 }}>{score}/60</td>
+                    <td style={{ padding: 10, borderBottom: `1px solid ${COLORS.border}`, color: met ? COLORS.bucketC : COLORS.warn, fontWeight: 800 }}>{met ? "Lifetime pension path" : "Cash balance risk"}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </Section>
+    </>
+  );
+}
+
 function AIAdvisor({ state }) {
   const [messages, setMessages] = useState([{ role: "assistant", content: "I can compare scenarios, stress-test the WB Rule of 60, explain SS timing, or translate the numbers into a Die with Zero spending plan." }]);
   const [input, setInput] = useState("");
@@ -833,7 +933,7 @@ export default function RetireMap() {
   const saveTimer = useRef(null);
   const didLoad = useRef(false);
   const narrow = useIsNarrow();
-  const tabs = ["Dashboard", "Setup", "Scenarios", "Projection", "AI Advisor"];
+  const tabs = ["Dashboard", "Setup", "Job Compare", "Scenarios", "Projection", "AI Advisor"];
 
   useEffect(() => {
     loadStoredState().then((data) => {
@@ -883,6 +983,7 @@ export default function RetireMap() {
       <div style={wrap}>
         {tab === "Dashboard" && <Dashboard state={state} setState={setState} narrow={narrow} />}
         {tab === "Setup" && <Setup state={state} update={update} narrow={narrow} />}
+        {tab === "Job Compare" && <JobCompare state={state} update={update} narrow={narrow} />}
         {tab === "Scenarios" && <Scenarios state={state} setState={setState} narrow={narrow} />}
         {tab === "Projection" && <Projection state={state} narrow={narrow} />}
         {tab === "AI Advisor" && <AIAdvisor state={state} />}
