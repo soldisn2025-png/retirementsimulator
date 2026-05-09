@@ -663,8 +663,37 @@ function Scenarios({ state, setState, narrow }) {
   const updateScenario = (id, key, value) => {
     setState((prev) => ({ ...prev, scenarios: { ...prev.scenarios, [id]: { ...prev.scenarios[id], [key]: value } } }));
   };
+  const resetScenario = (id) => {
+    setState((prev) => ({ ...prev, scenarios: { ...prev.scenarios, [id]: INITIAL_STATE.scenarios[id] } }));
+  };
+  const duplicateScenario = (id) => {
+    const ids = Object.keys(state.scenarios);
+    const start = ids.indexOf(id);
+    const target = ids
+      .slice(start + 1)
+      .concat(ids.slice(0, start))
+      .find((candidate) => candidate !== id);
+    if (!target) return;
+    setState((prev) => ({
+      ...prev,
+      scenarios: {
+        ...prev.scenarios,
+        [target]: {
+          ...prev.scenarios[id],
+          name: `${prev.scenarios[id].name || `Scenario ${id}`} copy`,
+          active: true,
+        },
+      },
+    }));
+  };
   return (
     <>
+      <Section title="Edit Scenario Slots" right={<span style={small}>Four editable slots: A, B, C, D</span>}>
+        <div style={{ display: "grid", gap: 8 }}>
+          <div style={{ fontWeight: 700 }}>Use this page to tailor the scenarios that appear in Dashboard and Projection.</div>
+          <div style={small}>Edit any slot directly. Turn the header checkbox on to include it in charts. Use Duplicate to copy a useful scenario into another slot, then change the salary, retire age, pension, or notes.</div>
+        </div>
+      </Section>
       <Grid columns={2} narrow={narrow}>
         {Object.entries(state.scenarios).map(([id, s]) => {
           const score = n(s.retireAge) + n(state.income.wbYearsService);
@@ -673,7 +702,14 @@ function Scenarios({ state, setState, narrow }) {
             <section key={id} style={card}>
               <div style={{ background: s.color, color: "#fff", borderRadius: 8, padding: 12, marginBottom: 14, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <strong>{id}. {s.name || "Scenario"}</strong>
-                <input type="checkbox" checked={s.active} onChange={(e) => updateScenario(id, "active", e.target.checked)} style={{ width: 18, height: 18 }} />
+                <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, fontWeight: 800 }}>
+                  Show in charts
+                  <input type="checkbox" checked={s.active} onChange={(e) => updateScenario(id, "active", e.target.checked)} style={{ width: 18, height: 18 }} />
+                </label>
+              </div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
+                <Button tone="secondary" onClick={() => duplicateScenario(id)}>Duplicate to Next Slot</Button>
+                <Button tone="secondary" onClick={() => resetScenario(id)}>Reset Slot</Button>
               </div>
               <Grid columns={2} narrow={narrow}>
                 <Field label="Name" type="text" value={s.name} onChange={(v) => updateScenario(id, "name", v)} />
@@ -933,7 +969,7 @@ export default function RetireMap() {
   const saveTimer = useRef(null);
   const didLoad = useRef(false);
   const narrow = useIsNarrow();
-  const tabs = ["Dashboard", "Setup", "Job Compare", "Scenarios", "Projection", "AI Advisor"];
+  const tabs = ["Dashboard", "Setup", "Job Compare", "Edit Scenarios", "Projection", "AI Advisor"];
 
   useEffect(() => {
     loadStoredState().then((data) => {
@@ -985,7 +1021,7 @@ export default function RetireMap() {
         {tab === "Dashboard" && <Dashboard state={state} setState={setState} narrow={narrow} />}
         {tab === "Setup" && <Setup state={state} update={update} narrow={narrow} />}
         {tab === "Job Compare" && <JobCompare state={state} update={update} narrow={narrow} />}
-        {tab === "Scenarios" && <Scenarios state={state} setState={setState} narrow={narrow} />}
+        {tab === "Edit Scenarios" && <Scenarios state={state} setState={setState} narrow={narrow} />}
         {tab === "Projection" && <Projection state={state} narrow={narrow} />}
         {tab === "AI Advisor" && <AIAdvisor state={state} />}
       </div>
