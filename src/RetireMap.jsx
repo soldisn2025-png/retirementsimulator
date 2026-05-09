@@ -970,6 +970,7 @@ export default function RetireMap() {
             <div>
               <h1 style={{ margin: 0, fontSize: narrow ? 28 : 34, letterSpacing: 0 }}>RetireMap</h1>
               <p style={{ margin: "6px 0 0", color: "#CBD5E1" }}>Scenario-based retirement planning through age {state.profile.planToAge}</p>
+              <p style={{ margin: "4px 0 0", color: "#94A3B8", fontSize: 12 }}>Build: GitHub main / RetireMap Vite</p>
             </div>
             <div style={{ color: saved ? "#86EFAC" : "#CBD5E1", fontWeight: 700 }}>{saved ? "Saved ✓" : "Per-device storage"}</div>
           </div>
