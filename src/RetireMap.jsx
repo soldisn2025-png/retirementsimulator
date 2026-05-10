@@ -490,9 +490,22 @@ function Button({ children, onClick, tone = "primary", type = "button", disabled
 function MiniChart({ state, height = 240 }) {
   const chartData = useMemo(() => buildChartData(state.profile, state.assets, state.income, state.scenarios, state.assumptions), [state]);
   const active = Object.values(state.scenarios).filter((s) => s.active);
-  if (!chartData.length) return <div style={{ ...small, padding: 20 }}>Activate at least one scenario to see projections.</div>;
+  if (!active.length) {
+    return (
+      <div style={{ minHeight: height, display: "grid", placeItems: "center", color: COLORS.muted, textAlign: "center" }}>
+        Turn on at least one scenario in Edit Scenarios to show a projection.
+      </div>
+    );
+  }
+  if (!chartData.length) {
+    return (
+      <div style={{ minHeight: height, display: "grid", placeItems: "center", color: COLORS.muted, textAlign: "center" }}>
+        Projection data is not available yet. Check ages, assumptions, and active scenarios.
+      </div>
+    );
+  }
   return (
-    <div style={{ height }}>
+    <div style={{ width: "100%", height, minHeight: height }}>
       <ResponsiveContainer width="100%" height="100%">
         <LineChart data={chartData} margin={{ top: 12, right: 14, left: 0, bottom: 8 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
@@ -506,22 +519,34 @@ function MiniChart({ state, height = 240 }) {
   );
 }
 
-function Dashboard({ state, setState, narrow }) {
+function Dashboard({ state, setState, setTab, narrow }) {
   const totals = bucketTotals(state.assets);
+  const isExample = JSON.stringify(state.profile) === JSON.stringify(EXAMPLE_DATA.profile) && n(state.assets.cash) === n(EXAMPLE_DATA.assets.cash);
   const alerts = [];
-  if (n(state.assets.rothBasis) === 0 && n(state.assets.rothSelf) > 0) alerts.push("Roth IRA basis not tracked. Only contribution basis can be withdrawn penalty-free before 59.5.");
+  if (n(state.assets.rothBasis) === 0 && n(state.assets.rothSelf) > 0) alerts.push({ text: "Roth IRA basis not tracked. Only contribution basis can be withdrawn penalty-free before 59.5.", action: "Enter Roth basis", tab: "Setup" });
   if (!n(state.income.ssEstimatedAt62)) alerts.push("Social Security estimate is not set.");
   if (!Object.values(state.scenarios).some((s) => s.active)) alerts.push("No scenarios are active.");
 
   return (
     <>
+      {isExample && (
+        <section style={{ ...card, marginBottom: 16, borderColor: "#BFDBFE", background: "#EFF6FF" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <div>
+              <div style={{ fontWeight: 800 }}>Using example data</div>
+              <div style={small}>Replace it with your own profile, assets, and income assumptions to make the projections meaningful.</div>
+            </div>
+            <Button onClick={() => setTab("Setup")}>Enter My Data</Button>
+          </div>
+        </section>
+      )}
       <Grid columns={4} narrow={narrow}>
         <StatCard label="Years to Retire" value={Math.max(0, n(state.profile.targetRetireAge) - n(state.profile.currentAge))} />
         <StatCard label="Total Financial Assets" value={money(totalFinancialAssets(state.assets), true)} color={COLORS.bucketA} />
         <StatCard label="SS at 62 Monthly" value={money(state.income.ssEstimatedAt62)} color={COLORS.bucketC} />
         <StatCard label="Target Retire Age" value={state.profile.targetRetireAge} color={COLORS.amber} />
       </Grid>
-      <Section title="Projection Snapshot">
+      <Section title="Projection Snapshot" right={<Button tone="secondary" onClick={() => setTab("Projection")}>Open Full Projection</Button>}>
         <MiniChart state={state} />
       </Section>
       <Grid columns={3} narrow={narrow}>
@@ -529,8 +554,16 @@ function Dashboard({ state, setState, narrow }) {
         <StatCard label="Bucket B Roth Bridge" value={money(totals.b)} color={COLORS.bucketB} />
         <StatCard label="Bucket C Locked Later" value={money(totals.c)} color={COLORS.bucketC} />
       </Grid>
-      <Section title="Alerts" right={<Button tone="secondary" onClick={() => setState(EXAMPLE_DATA)}>Load Example</Button>}>
-        {alerts.length ? alerts.map((a) => <div key={a} style={{ color: COLORS.warn, fontWeight: 700, marginBottom: 8 }}>{a}</div>) : <div style={small}>No active warnings.</div>}
+      <Section title="Alerts" right={!isExample ? <Button tone="secondary" onClick={() => setState(EXAMPLE_DATA)}>Load Example</Button> : null}>
+        {alerts.length ? alerts.map((a) => {
+          const alert = typeof a === "string" ? { text: a } : a;
+          return (
+            <div key={alert.text} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 8 }}>
+              <div style={{ color: COLORS.warn, fontWeight: 700 }}>{alert.text}</div>
+              {alert.action && <Button tone="secondary" onClick={() => setTab(alert.tab)}>{alert.action}</Button>}
+            </div>
+          );
+        }) : <div style={small}>No active warnings.</div>}
       </Section>
     </>
   );
@@ -1008,7 +1041,7 @@ export default function RetireMap() {
               <p style={{ margin: "6px 0 0", color: "#CBD5E1" }}>Scenario-based retirement planning through age {state.profile.planToAge}</p>
               <p style={{ margin: "4px 0 0", color: "#94A3B8", fontSize: 12 }}>Build: GitHub main / RetireMap Vite</p>
             </div>
-            <div style={{ color: saved ? "#86EFAC" : "#CBD5E1", fontWeight: 700 }}>{saved ? "Saved ✓" : "Per-device storage"}</div>
+            <div style={{ color: saved ? "#86EFAC" : "#CBD5E1", fontWeight: 700 }}>{saved ? "Saved ✓" : "Saved on this device only"}</div>
           </div>
           <nav style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 18 }}>
             {tabs.map((t) => (
@@ -1018,7 +1051,7 @@ export default function RetireMap() {
         </div>
       </header>
       <div style={wrap}>
-        {tab === "Dashboard" && <Dashboard state={state} setState={setState} narrow={narrow} />}
+        {tab === "Dashboard" && <Dashboard state={state} setState={setState} setTab={setTab} narrow={narrow} />}
         {tab === "Setup" && <Setup state={state} update={update} narrow={narrow} />}
         {tab === "Job Compare" && <JobCompare state={state} update={update} narrow={narrow} />}
         {tab === "Edit Scenarios" && <Scenarios state={state} setState={setState} narrow={narrow} />}
