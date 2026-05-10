@@ -843,8 +843,9 @@ function Projection({ state, narrow }) {
   );
 }
 
-function JobCompare({ state, update, narrow }) {
+function JobCompare({ state, update, setState, setTab, narrow }) {
   const { income, scenarios } = state;
+  const [targetScenario, setTargetScenario] = useState("A");
   const setIncome = (key, value) => update("income", key, value);
   const types = [
     { id: "W2", label: "Current W-2", note: "FICA, estimated tax, 401k, match, HSA." },
@@ -855,6 +856,35 @@ function JobCompare({ state, update, narrow }) {
   const baseline = calcCompForType(income, "W2", income.annualGross);
   const wbUsEquivalent = findEquivalentSalary(income, baseline.total, "WB_US");
   const wbIntlEquivalent = findEquivalentSalary(income, baseline.total, "WB_INTL");
+  const applyToScenario = (type) => {
+    const labels = {
+      W2: "Current W-2",
+      WB_US: "WB US-based",
+      WB_INTL: "WB Abroad",
+      SE: "Self-Employed",
+    };
+    const comp = calcCompForType(income, type);
+    const ruleMet = type.startsWith("WB") ? checkRuleOf60(state.scenarios[targetScenario].retireAge, income.wbYearsService) : false;
+    const pensionMonthly = type.startsWith("WB") && ruleMet ? Math.round((n(income.annualGross) * (n(income.wbPensionWBPct) / 100)) / 12) : 0;
+    setState((prev) => ({
+      ...prev,
+      income: { ...prev.income, employmentType: type },
+      scenarios: {
+        ...prev.scenarios,
+        [targetScenario]: {
+          ...prev.scenarios[targetScenario],
+          active: true,
+          name: labels[type],
+          annualFinancialSavings: Math.max(0, comp.retirement),
+          wbPensionEligible: type.startsWith("WB") && ruleMet,
+          wbPensionMonthly: pensionMonthly,
+          ssClaimAge: prev.income.ssClaimAge,
+          notes: `${labels[type]} scenario applied from Job Compare. Annual savings uses modeled retirement value and excludes mortgage principal.`,
+        },
+      },
+    }));
+    setTab("Edit Scenarios");
+  };
 
   return (
     <>
@@ -904,6 +934,21 @@ function JobCompare({ state, update, narrow }) {
         <StatCard label="WB US Salary to Match" value={wbUsEquivalent ? money(wbUsEquivalent) : ">$600K"} color={COLORS.bucketB} />
         <StatCard label="WB Abroad Salary to Match" value={wbIntlEquivalent ? money(wbIntlEquivalent) : ">$600K"} color={COLORS.bucketC} />
       </Grid>
+      <Section title="Apply Job Result to Scenario" right={<span style={small}>Creates an editable scenario from the comparison above.</span>}>
+        <Grid columns={2} narrow={narrow}>
+          <Field label="Target Scenario Slot" value={targetScenario} type="text" onChange={setTargetScenario} options={Object.keys(scenarios).map((id) => ({ value: id, label: `${id}. ${scenarios[id].name}` }))} />
+          <div style={{ ...card, boxShadow: "none", background: "#F8FAFC" }}>
+            <div style={{ fontWeight: 800, marginBottom: 6 }}>What gets applied</div>
+            <div style={small}>Name, active state, annual financial savings, WB pension eligibility, estimated pension amount, SS claim age, and notes. You can fine-tune everything in Edit Scenarios.</div>
+          </div>
+        </Grid>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 14 }}>
+          <Button onClick={() => applyToScenario("W2")}>Apply W-2</Button>
+          <Button onClick={() => applyToScenario("WB_US")}>Apply WB US</Button>
+          <Button onClick={() => applyToScenario("WB_INTL")}>Apply WB Abroad</Button>
+          <Button tone="secondary" onClick={() => applyToScenario("SE")}>Apply Self-Employed</Button>
+        </div>
+      </Section>
       <Section title="Rule of 60 by Scenario">
         <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 620 }}>
@@ -1053,7 +1098,7 @@ export default function RetireMap() {
       <div style={wrap}>
         {tab === "Dashboard" && <Dashboard state={state} setState={setState} setTab={setTab} narrow={narrow} />}
         {tab === "Setup" && <Setup state={state} update={update} narrow={narrow} />}
-        {tab === "Job Compare" && <JobCompare state={state} update={update} narrow={narrow} />}
+        {tab === "Job Compare" && <JobCompare state={state} update={update} setState={setState} setTab={setTab} narrow={narrow} />}
         {tab === "Edit Scenarios" && <Scenarios state={state} setState={setState} narrow={narrow} />}
         {tab === "Projection" && <Projection state={state} narrow={narrow} />}
         {tab === "AI Advisor" && <AIAdvisor state={state} />}
